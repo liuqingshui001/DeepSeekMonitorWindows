@@ -2,7 +2,7 @@
 
 DeepSeek Monitor Windows 是一个面向 Windows 的 DeepSeek API 用量监控桌面应用，用于查看账户余额、当月消费、模型 Token 用量和最近用量趋势。
 
-本项目基于 [felikschu/deepseek-monitor](https://github.com/felikschu/deepseek-monitor) 的开源项目思路做 Windows 系统适配，**感谢原作者 felikschu 的开源工作**。原项目是 Python Web Dashboard，用于追踪 DeepSeek 平台多类公开变化，原项目当前仅支持mac版本。本项目开发目标是 Windows 桌面端监控工具，技术栈和使用方式已经按 Windows 平台重构实现。
+本项目基于 [JayHome137/deepseek-monitor](https://github.com/JayHome137/DeepSeekMonitor) 的开源项目思路做 Windows 系统适配，**感谢原作者 JayHome137 的开源工作**。原项目是 Python Web Dashboard，用于追踪 DeepSeek 平台多类公开变化，原项目当前仅支持mac版本。本项目开发目标是 Windows 桌面端监控工具，技术栈和使用方式已经按 Windows 平台重构实现。
 
 郑重声明：本项目不是 DeepSeek 官方产品。
 
