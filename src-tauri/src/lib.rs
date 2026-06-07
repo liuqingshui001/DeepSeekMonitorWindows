@@ -872,6 +872,14 @@ pub fn run() {
     }
 
     tauri::Builder::default()
+        // 单实例守卫：必须作为第一个注册的插件。
+        // 程序已运行时再次启动 exe，第二个进程不会新开窗口，
+        // 而是触发此回调把已有主窗口显示并聚焦，随后第二个进程自行退出。
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                show_main_window(&window);
+            }
+        }))
         .manage(Arc::new(AtomicBool::new(false)))
         .invoke_handler(tauri::generate_handler![
             hide_main_window,

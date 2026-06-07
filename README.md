@@ -158,10 +158,23 @@ Rust 后端依赖：
 
 - tauri 2.11，启用 tray-icon
 - tauri-plugin-log
+- tauri-plugin-single-instance，单实例守卫，防止应用重复多开
 - reqwest 0.12，启用 json
 - serde
 - serde_json
 - log
+
+## 更新日志
+
+完整变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v1.0.1
+
+- 修复应用单实例缺失导致的重复多开问题。此前在程序已运行的情况下再次点击图标或 exe，会不断启动新的进程；现在再次启动时不再新开窗口，而是将已有主面板唤到前台。通过接入 `tauri-plugin-single-instance` 单实例守卫实现。
+
+### v1.0.0
+
+- 首个正式发布版本，提供 DeepSeek API 余额查询、平台用量统计、消费趋势、Windows 托盘入口、API Key 与用量 Token 管理等能力。
 
 ## 许可证
 
