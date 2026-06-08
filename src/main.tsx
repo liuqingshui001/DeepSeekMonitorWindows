@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
 import {
   BarChart3,
   Brain,
@@ -9,6 +10,7 @@ import {
   CheckCircle2,
   Clipboard,
   CreditCard,
+  Info,
   KeyRound,
   Power,
   RefreshCw,
@@ -636,6 +638,7 @@ function SettingsPanel({
   const [usageStatus, setUsageStatus] = React.useState("");
   const [usageSyncing, setUsageSyncing] = React.useState(false);
   const [showManualPaste, setShowManualPaste] = React.useState(false);
+  const [appVersion, setAppVersion] = React.useState("1.1.0");
   const configPath = config?.configPath ?? "%APPDATA%\\DeepSeekMonitorWindows\\config.json";
 
   React.useEffect(() => {
@@ -651,6 +654,12 @@ function SettingsPanel({
       .catch(() => {
         setStatus("浏览器预览模式，未连接本地配置");
       });
+  }, []);
+
+  React.useEffect(() => {
+    void getVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion("1.1.0"));
   }, []);
 
   const refreshUsageAfterToken = React.useCallback(
@@ -956,6 +965,13 @@ function SettingsPanel({
               ))}
             </div>
           )}
+        </SettingsSection>
+
+        <SettingsSection icon={<Info size={15} />} title="关于">
+          <div className="version-row">
+            <span>当前版本</span>
+            <strong>v{appVersion}</strong>
+          </div>
         </SettingsSection>
 
       </div>
