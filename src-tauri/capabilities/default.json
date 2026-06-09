@@ -19,6 +19,8 @@
     "core:window:allow-show",
     "core:window:allow-close",
     "core:window:allow-set-focus",
+    "core:window:allow-set-size",
+    "core:window:allow-set-min-size",
     "core:event:allow-emit",
     "core:event:allow-listen",
     "core:webview:allow-internal-toggle-devtools"

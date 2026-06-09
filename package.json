@@ -9,7 +9,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "tauri:check": "powershell -ExecutionPolicy Bypass -File scripts/tauri-check.ps1",
-    "tauri:dev": "powershell -ExecutionPolicy Bypass -File scripts/tauri-dev.ps1"
+    "tauri:dev": "node scripts/tauri-dev.cjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",

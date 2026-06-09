@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import {
   BarChart3,
   Brain,
@@ -17,12 +18,24 @@ import {
   Settings,
   Shirt,
   SunMedium,
+  Cpu,
+  Monitor,
+  HardDrive,
+  Wifi,
+  Battery,
+  Server,
+  Activity,
+  Thermometer,
   X,
   Zap,
 } from "lucide-react";
 import "./styles.css";
+import TitleBar from './components/TitleBar';
+import HardwareDashboard from './components/HardwareDashboard';
 
 type ViewName = "dashboard" | "settings" | "detail";
+type ViewMode = 'tab' | 'split';
+type HardwareSensors = Record<string, number>;
 type ModelName = "flash" | "pro";
 type AppConfig = {
   apiKeyConfigured: boolean;
@@ -152,6 +165,23 @@ const refreshOptions = [
 function App() {
   const [view, setView] = React.useState<ViewName>("dashboard");
   const [model, setModel] = React.useState<ModelName>("flash");
+  const [viewMode, setViewMode] = React.useState<ViewMode>('tab');
+
+  const toggleViewMode = React.useCallback(() => {
+    setViewMode(prev => {
+      const next = prev === 'tab' ? 'split' : 'tab';
+      const win = getCurrentWindow();
+      if (next === 'split') {
+        void win.setSize(new LogicalSize(860, 800));
+      } else {
+        void win.setSize(new LogicalSize(420, 640));
+      }
+      return next;
+    });
+  }, []);
+  const [activeTab, setActiveTab] = React.useState<'hardware' | 'deepseek'>('hardware');
+  const [hardwareSensors, setHardwareSensors] = React.useState<HardwareSensors>({});
+  const [theme, setTheme] = React.useState(() => localStorage.getItem('ui-theme') || 'dark');
 
   const [balance, setBalance] = React.useState<BalanceData | null>(null);
   const [balanceState, setBalanceState] = React.useState<BalanceState>("loading");
@@ -200,6 +230,31 @@ function App() {
 
   React.useEffect(() => {
     refreshAll();
+
+    // 硬件传感器监听
+    let unlistenSensors: (() => void) | undefined;
+    try {
+      listen<{ t: number; s: HardwareSensors; i: number }>('hardware:sensors', (event) => {
+        setHardwareSensors(event.payload.s);
+      }).then(fn => { unlistenSensors = fn; }).catch((e) => {
+        console.warn('Failed to listen for hardware sensors:', e);
+      });
+    } catch (e) {
+      console.warn('Failed to listen for hardware sensors:', e);
+    }
+
+    // 启动硬件监控
+    try {
+      invoke('start_hardware_monitor', { intervalMs: 1000 }).catch((e: any) => {
+        console.warn('Hardware monitor not available:', e);
+      });
+    } catch (e) {
+      // Ignore - sidecar may not be available
+    }
+
+    return () => {
+      if (unlistenSensors) unlistenSensors();
+    };
   }, [refreshAll]);
 
   React.useEffect(() => {
@@ -228,25 +283,140 @@ function App() {
     });
   }, []);
 
+  // 键盘快捷键
+  React.useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === '\\') {
+        e.preventDefault();
+        toggleViewMode();
+      }
+      if (e.ctrlKey && e.key === 'Tab') {
+        e.preventDefault();
+        setActiveTab(prev => prev === 'hardware' ? 'deepseek' : 'hardware');
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [toggleViewMode]);
+
+  // 初始化窗口尺寸（标签页模式宽度）
+  React.useEffect(() => {
+    try {
+      const win = getCurrentWindow();
+      void win.setSize(new LogicalSize(420, 640));
+    } catch (_) {
+      // Browser dev mode — no Tauri runtime
+    }
+  }, []);
+
+  const [splitRatio, setSplitRatio] = React.useState(0.5);
+
+  const startSplitDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = (e.target as HTMLElement).parentElement!;
+    const startX = e.clientX;
+    const startRatio = splitRatio;
+
+    const onMove = (ev: MouseEvent) => {
+      const rect = container.getBoundingClientRect();
+      const ratio = Math.max(0.3, Math.min(0.7, (ev.clientX - rect.left) / rect.width));
+      setSplitRatio(ratio);
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    localStorage.setItem('ui-theme', next);
+    document.documentElement.setAttribute('data-theme', next);
+  };
+
   return (
     <div className="stage">
-      {view === "dashboard" && (
-        <DashboardPanel
-          balance={balance}
-          balanceState={balanceState}
-          balanceError={balanceError}
-          usage={usage}
-          usageState={usageState}
-          usageError={usageError}
-          onRefresh={refreshAll}
-          onClose={hideWindow}
-          onSettings={() => setView("settings")}
-          onDetail={(nextModel) => {
-            setModel(nextModel);
-            setView("detail");
-          }}
-        />
+      <TitleBar
+        viewMode={viewMode}
+        onToggleView={toggleViewMode}
+        onRefresh={refreshAll}
+        onToggleTheme={toggleTheme}
+        onOpenSettings={() => setView('settings')}
+        theme={theme}
+      />
+
+      {/* 标签页模式 */}
+      {viewMode === 'tab' ? (
+        <div className="tab-container">
+          <div className="tab-bar">
+            <button
+              className={`tab-btn ${activeTab === 'hardware' ? 'active' : ''}`}
+              onClick={() => setActiveTab('hardware')}
+            >
+              硬件监控
+            </button>
+            <button
+              className={`tab-btn ${activeTab === 'deepseek' ? 'active' : ''}`}
+              onClick={() => setActiveTab('deepseek')}
+            >
+              DeepSeek API
+            </button>
+          </div>
+          <div className="tab-content">
+            {activeTab === 'hardware' ? (
+              <HardwareDashboard sensors={hardwareSensors} />
+            ) : (
+              <DashboardPanel
+                balance={balance}
+                balanceState={balanceState}
+                balanceError={balanceError}
+                usage={usage}
+                usageState={usageState}
+                usageError={usageError}
+                onRefresh={refreshAll}
+                onClose={hideWindow}
+                onSettings={() => setView("settings")}
+                onDetail={(nextModel) => {
+                  setModel(nextModel);
+                  setView("detail");
+                }}
+              />
+            )}
+          </div>
+        </div>
+      ) : (
+        /* 双列模式 */
+        <div className="split-container">
+          <div className="split-left" style={{ flex: splitRatio }}>
+            <div className="split-header">硬件监控</div>
+            <HardwareDashboard sensors={hardwareSensors} />
+          </div>
+          <div className="split-divider" onMouseDown={startSplitDrag} />
+          <div className="split-right" style={{ flex: 1 - splitRatio }}>
+            <div className="split-header">DeepSeek API</div>
+            <DashboardPanel
+              balance={balance}
+              balanceState={balanceState}
+              balanceError={balanceError}
+              usage={usage}
+              usageState={usageState}
+              usageError={usageError}
+              onRefresh={refreshAll}
+              onClose={hideWindow}
+              onSettings={() => setView("settings")}
+              onDetail={(nextModel) => {
+                setModel(nextModel);
+                setView("detail");
+              }}
+            />
+          </div>
+        </div>
       )}
+
+      {/* Settings 和 Detail 面板 */}
       {view === "settings" && (
         <SettingsPanel
           onUsageLoaded={(nextUsage) => {

@@ -1,4 +1,6 @@
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+mod sidecar;
+
 pub fn run() {
     use serde::{Deserialize, Serialize};
     use std::{
@@ -21,6 +23,62 @@ pub fn run() {
         Emitter, Manager, PhysicalPosition, Position, WebviewWindow,
     };
 
+    use sidecar::SidecarManager;
+    use tokio::sync::Mutex;
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct HardwareConfig {
+        pub enabled: bool,
+        pub sidecar_interval_ms: u64,
+        pub auto_start: bool,
+        pub enabled_sensors: Vec<String>,
+    }
+
+    impl Default for HardwareConfig {
+        fn default() -> Self {
+            Self {
+                enabled: true,
+                sidecar_interval_ms: 1000,
+                auto_start: true,
+                enabled_sensors: vec![
+                    "CPU.Load".into(),
+                    "CPU.Temp".into(),
+                    "CPU.Clock".into(),
+                    "CPU.Power".into(),
+                    "GPU.Load".into(),
+                    "GPU.Temp".into(),
+                    "GPU.Clock".into(),
+                    "GPU.Power".into(),
+                    "GPU.MemUsed".into(),
+                    "MEM.Load".into(),
+                    "MEM.UsedGB".into(),
+                    "DISK.Read".into(),
+                    "DISK.Write".into(),
+                    "NET.Up".into(),
+                    "NET.Down".into(),
+                    "MOBO.Temp".into(),
+                    "BAT.Percent".into(),
+                    "FPS".into(),
+                ],
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct UiConfig {
+        pub view_mode: String,
+        pub theme: String,
+    }
+
+    impl Default for UiConfig {
+        fn default() -> Self {
+            Self {
+                view_mode: "tab".into(),
+                theme: "dark".into(),
+            }
+        }
+    }
+
     #[derive(Debug, Default, Deserialize, Serialize)]
     struct StoredConfig {
         api_key: Option<String>,
@@ -30,6 +88,10 @@ pub fn run() {
         #[serde(default)]
         auto_refresh_enabled: bool,
         autostart: bool,
+        #[serde(default)]
+        pub hardware: HardwareConfig,
+        #[serde(default)]
+        pub ui: UiConfig,
     }
 
     #[derive(Debug, Serialize)]
@@ -42,6 +104,12 @@ pub fn run() {
         auto_refresh_enabled: bool,
         autostart: bool,
         config_path: String,
+        hardware: HardwareConfig,
+        ui: UiConfig,
+    }
+
+    pub struct AppState {
+        pub sidecar: Mutex<SidecarManager>,
     }
 
     fn config_path() -> Result<PathBuf, String> {
@@ -56,6 +124,8 @@ pub fn run() {
         if !path.exists() {
             return Ok(StoredConfig {
                 refresh_interval_seconds: 60,
+                hardware: HardwareConfig::default(),
+                ui: UiConfig::default(),
                 ..StoredConfig::default()
             });
         }
@@ -125,6 +195,8 @@ pub fn run() {
             auto_refresh_enabled: config.auto_refresh_enabled,
             autostart: config.autostart,
             config_path: path.to_string_lossy().to_string(),
+            hardware: config.hardware,
+            ui: config.ui,
         })
     }
 
@@ -899,6 +971,47 @@ pub fn run() {
         })
     }
 
+    #[tauri::command]
+    async fn start_hardware_monitor(
+        state: tauri::State<'_, AppState>,
+        app: tauri::AppHandle,
+        interval_ms: Option<u64>,
+    ) -> Result<(), String> {
+        let interval = interval_ms.unwrap_or(1000);
+        let mut sidecar = state.sidecar.lock().await;
+        sidecar.start(interval).await?;
+        sidecar.start_read_loop(app, interval).await;
+        Ok(())
+    }
+
+    #[tauri::command]
+    async fn stop_hardware_monitor(
+        state: tauri::State<'_, AppState>,
+    ) -> Result<(), String> {
+        let mut sidecar = state.sidecar.lock().await;
+        sidecar.stop().await;
+        Ok(())
+    }
+
+    #[tauri::command]
+    async fn restart_hardware_monitor(
+        state: tauri::State<'_, AppState>,
+        _app: tauri::AppHandle,
+        interval_ms: Option<u64>,
+    ) -> Result<(), String> {
+        let interval = interval_ms.unwrap_or(1000);
+        let mut sidecar = state.sidecar.lock().await;
+        sidecar.restart(interval).await
+    }
+
+    #[tauri::command]
+    async fn get_hardware_status(
+        state: tauri::State<'_, AppState>,
+    ) -> Result<bool, String> {
+        let sidecar = state.sidecar.lock().await;
+        Ok(sidecar.is_running().await)
+    }
+
     tauri::Builder::default()
         // 单实例守卫：必须作为第一个注册的插件。
         // 程序已运行时再次启动 exe，第二个进程不会新开窗口，
@@ -922,9 +1035,17 @@ pub fn run() {
             clear_usage_token,
             fetch_usage,
             start_usage_sync,
-            usage_token_captured
+            usage_token_captured,
+            start_hardware_monitor,
+            stop_hardware_monitor,
+            restart_hardware_monitor,
+            get_hardware_status
         ])
         .setup(|app| {
+            app.manage(AppState {
+                sidecar: Mutex::new(SidecarManager::new()),
+            });
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()

@@ -5,6 +5,15 @@ node_modules/
 dist/
 src-tauri/target/
 
+# ---------- .NET build artifacts ----------
+HardwareSidecar/bin/
+HardwareSidecar/obj/
+*.pdb
+
+# ---------- Temporary files ----------
+.tmp/
+*.tmp
+
 # ---------- Markdown docs policy ----------
 *.md
 *.MD
@@ -13,7 +22,8 @@ src-tauri/target/
 # ---------- Internal docs ----------
 PRD.md
 IMPLEMENTATION_NOTES.md
-docs/
+docs/*
+!docs/screenshots/
 
 # ---------- Local environment and secrets ----------
 .npmrc
@@ -34,9 +44,10 @@ Roaming/
 *.out.log
 cargo-check.*
 tauri-check.*
-tauri-dev.*
 tauri-open.*
 tauri-dev-run.*
+# 保留 scripts/tauri-dev.cjs（Node.js 开发启动器）
+!scripts/tauri-dev.cjs
 test-output/
 
 # ---------- Temporary screenshots ----------
@@ -48,7 +59,6 @@ detail-mvp.png
 document.title
 document.title'
 [{]
-*.tmp
 
 # ---------- IDE / editors ----------
 .vscode/
