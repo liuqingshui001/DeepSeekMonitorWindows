@@ -45,6 +45,7 @@ type AppConfig = {
   autoRefreshEnabled: boolean;
   autostart: boolean;
   configPath: string;
+  ui: { viewMode: string; theme: string; activeTab: string; splitRatio: number };
 };
 type BalanceData = {
   isAvailable: boolean;
@@ -166,22 +167,37 @@ function App() {
   const [view, setView] = React.useState<ViewName>("dashboard");
   const [model, setModel] = React.useState<ModelName>("flash");
   const [viewMode, setViewMode] = React.useState<ViewMode>('tab');
+  const [splitRatio, setSplitRatio] = React.useState(0.5);
 
-  const toggleViewMode = React.useCallback(() => {
-    setViewMode(prev => {
-      const next = prev === 'tab' ? 'split' : 'tab';
-      const win = getCurrentWindow();
-      if (next === 'split') {
-        void win.setSize(new LogicalSize(860, 800));
-      } else {
-        void win.setSize(new LogicalSize(420, 640));
-      }
-      return next;
+  const toggleViewMode = () => {
+    const next = viewMode === 'tab' ? 'split' : 'tab';
+    setViewMode(next);
+    const win = getCurrentWindow();
+    if (next === 'split') {
+      void win.setSize(new LogicalSize(860, 800));
+    } else {
+      void win.setSize(new LogicalSize(420, 640));
+    }
+    // 立即持久化，用最新值
+    void invoke("save_ui_config", {
+      ui: { viewMode: next, activeTab, splitRatio, theme }
     });
-  }, []);
+  };
   const [activeTab, setActiveTab] = React.useState<'hardware' | 'deepseek'>('hardware');
   const [hardwareSensors, setHardwareSensors] = React.useState<HardwareSensors>({});
-  const [theme, setTheme] = React.useState(() => localStorage.getItem('ui-theme') || 'dark');
+  const [theme, setTheme] = React.useState('dark');
+
+  // 持久化所有 UI 状态到后端配置
+  const saveUiConfig = (overrides: { viewMode?: ViewMode; activeTab?: string; splitRatio?: number; theme?: string }) => {
+    void invoke("save_ui_config", {
+      ui: {
+        viewMode: overrides.viewMode ?? viewMode,
+        activeTab: overrides.activeTab ?? activeTab,
+        splitRatio: overrides.splitRatio ?? splitRatio,
+        theme: overrides.theme ?? theme,
+      }
+    });
+  };
 
   const [balance, setBalance] = React.useState<BalanceData | null>(null);
   const [balanceState, setBalanceState] = React.useState<BalanceState>("loading");
@@ -262,6 +278,18 @@ function App() {
       .then((config) => {
         setRefreshIntervalSeconds(config.refreshIntervalSeconds || 60);
         setAutoRefreshEnabled(config.autoRefreshEnabled);
+        // 恢复所有 UI 状态
+        if (config.ui?.viewMode === 'split' || config.ui?.viewMode === 'tab') {
+          setViewMode(config.ui.viewMode);
+        }
+        if (config.ui?.activeTab === 'hardware' || config.ui?.activeTab === 'deepseek') {
+          setActiveTab(config.ui.activeTab);
+        }
+        setSplitRatio(typeof config.ui?.splitRatio === 'number' ? config.ui.splitRatio : 0.5);
+        if (config.ui?.theme === 'dark' || config.ui?.theme === 'light') {
+          setTheme(config.ui.theme);
+          document.documentElement.setAttribute('data-theme', config.ui.theme);
+        }
       })
       .catch(() => {
         setRefreshIntervalSeconds(60);
@@ -282,34 +310,28 @@ function App() {
       // Browser preview has no Tauri IPC. Keep it non-blocking for visual checks.
     });
   }, []);
+  const toggleViewModeRef = React.useRef(toggleViewMode);
+  toggleViewModeRef.current = toggleViewMode;
 
   // 键盘快捷键
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === '\\') {
         e.preventDefault();
-        toggleViewMode();
+        toggleViewModeRef.current();
       }
       if (e.ctrlKey && e.key === 'Tab') {
         e.preventDefault();
-        setActiveTab(prev => prev === 'hardware' ? 'deepseek' : 'hardware');
+        setActiveTab(prev => {
+          const next = prev === 'hardware' ? 'deepseek' : 'hardware';
+          saveUiConfig({ activeTab: next });
+          return next;
+        });
       }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [toggleViewMode]);
-
-  // 初始化窗口尺寸（标签页模式宽度）
-  React.useEffect(() => {
-    try {
-      const win = getCurrentWindow();
-      void win.setSize(new LogicalSize(420, 640));
-    } catch (_) {
-      // Browser dev mode — no Tauri runtime
-    }
   }, []);
-
-  const [splitRatio, setSplitRatio] = React.useState(0.5);
 
   const startSplitDrag = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -322,9 +344,13 @@ function App() {
       const ratio = Math.max(0.3, Math.min(0.7, (ev.clientX - rect.left) / rect.width));
       setSplitRatio(ratio);
     };
-    const onUp = () => {
+    const onUp = (ev: MouseEvent) => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
+      // 根据最终位置计算出比例并持久化
+      const rect = container.getBoundingClientRect();
+      const finalRatio = Math.max(0.3, Math.min(0.7, (ev.clientX - rect.left) / rect.width));
+      saveUiConfig({ splitRatio: finalRatio });
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
@@ -333,8 +359,8 @@ function App() {
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark';
     setTheme(next);
-    localStorage.setItem('ui-theme', next);
     document.documentElement.setAttribute('data-theme', next);
+    saveUiConfig({ theme: next });
   };
 
   return (
@@ -354,13 +380,13 @@ function App() {
           <div className="tab-bar">
             <button
               className={`tab-btn ${activeTab === 'hardware' ? 'active' : ''}`}
-              onClick={() => setActiveTab('hardware')}
+              onClick={() => { setActiveTab('hardware'); saveUiConfig({ activeTab: 'hardware' }); }}
             >
               硬件监控
             </button>
             <button
               className={`tab-btn ${activeTab === 'deepseek' ? 'active' : ''}`}
-              onClick={() => setActiveTab('deepseek')}
+              onClick={() => { setActiveTab('deepseek'); saveUiConfig({ activeTab: 'deepseek' }); }}
             >
               DeepSeek API
             </button>
@@ -829,7 +855,7 @@ function SettingsPanel({
   React.useEffect(() => {
     void getVersion()
       .then(setAppVersion)
-      .catch(() => setAppVersion("1.1.0"));
+      .catch(() => setAppVersion("1.1.2"));
   }, []);
 
   const refreshUsageAfterToken = React.useCallback(

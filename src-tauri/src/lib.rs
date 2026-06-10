@@ -65,9 +65,18 @@ pub fn run() {
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
     pub struct UiConfig {
         pub view_mode: String,
         pub theme: String,
+        #[serde(default)]
+        pub active_tab: String,
+        #[serde(default = "default_split_ratio")]
+        pub split_ratio: f64,
+    }
+
+    fn default_split_ratio() -> f64 {
+        0.5
     }
 
     impl Default for UiConfig {
@@ -75,6 +84,8 @@ pub fn run() {
             Self {
                 view_mode: "tab".into(),
                 theme: "dark".into(),
+                active_tab: "hardware".into(),
+                split_ratio: 0.5,
             }
         }
     }
@@ -313,6 +324,14 @@ pub fn run() {
         apply_autostart(autostart)?;
         let mut config = read_stored_config()?;
         config.autostart = autostart;
+        write_stored_config(&config)?;
+        to_app_config(config)
+    }
+
+    #[tauri::command]
+    fn save_ui_config(ui: UiConfig) -> Result<AppConfig, String> {
+        let mut config = read_stored_config()?;
+        config.ui = ui;
         write_stored_config(&config)?;
         to_app_config(config)
     }
@@ -1021,6 +1040,7 @@ pub fn run() {
                 show_main_window(&window);
             }
         }))
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .manage(Arc::new(AtomicBool::new(false)))
         .invoke_handler(tauri::generate_handler![
             hide_main_window,
@@ -1030,6 +1050,7 @@ pub fn run() {
             save_refresh_interval,
             save_auto_refresh_enabled,
             save_autostart,
+            save_ui_config,
             fetch_balance,
             save_usage_token,
             clear_usage_token,
@@ -1068,7 +1089,15 @@ pub fn run() {
                         }
                     }
                     "quit" => {
-                        app.exit(0);
+                        // 先关闭 HardwareSidecar 再退出
+                        let app_handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Some(state) = app_handle.try_state::<AppState>() {
+                                let mut sidecar = state.sidecar.lock().await;
+                                sidecar.stop().await;
+                            }
+                            app_handle.exit(0);
+                        });
                     }
                     _ => {}
                 })

@@ -23,6 +23,7 @@
     "core:window:allow-set-min-size",
     "core:event:allow-emit",
     "core:event:allow-listen",
-    "core:webview:allow-internal-toggle-devtools"
+    "core:webview:allow-internal-toggle-devtools",
+    "window-state:default"
   ]
 }
