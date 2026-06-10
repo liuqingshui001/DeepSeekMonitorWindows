@@ -28,6 +28,7 @@ import {
   Thermometer,
   X,
   Zap,
+  Filter,
 } from "lucide-react";
 import "./styles.css";
 import TitleBar from './components/TitleBar';
@@ -45,7 +46,7 @@ type AppConfig = {
   autoRefreshEnabled: boolean;
   autostart: boolean;
   configPath: string;
-  ui: { viewMode: string; theme: string; activeTab: string; splitRatio: number };
+  ui: { viewMode: string; theme: string; activeTab: string; splitRatio: number; enabledCategories: string[] };
 };
 type BalanceData = {
   isAvailable: boolean;
@@ -180,24 +181,33 @@ function App() {
     }
     // 立即持久化，用最新值
     void invoke("save_ui_config", {
-      ui: { viewMode: next, activeTab, splitRatio, theme }
+      ui: { viewMode: next, activeTab, splitRatio, theme, enabledCategories }
     });
   };
   const [activeTab, setActiveTab] = React.useState<'hardware' | 'deepseek'>('hardware');
   const [hardwareSensors, setHardwareSensors] = React.useState<HardwareSensors>({});
   const [theme, setTheme] = React.useState('dark');
+  const [enabledCategories, setEnabledCategories] = React.useState<string[]>(['deepseek', 'cpu', 'gpu', 'memory', 'disk', 'network']);
 
   // 持久化所有 UI 状态到后端配置
-  const saveUiConfig = (overrides: { viewMode?: ViewMode; activeTab?: string; splitRatio?: number; theme?: string }) => {
+  const saveUiConfig = (overrides: { viewMode?: ViewMode; activeTab?: string; splitRatio?: number; theme?: string; enabledCategories?: string[] }) => {
     void invoke("save_ui_config", {
       ui: {
         viewMode: overrides.viewMode ?? viewMode,
         activeTab: overrides.activeTab ?? activeTab,
         splitRatio: overrides.splitRatio ?? splitRatio,
         theme: overrides.theme ?? theme,
+        enabledCategories: overrides.enabledCategories ?? enabledCategories,
       }
     });
   };
+
+  // 当 DeepSeek 分类被禁用时自动切换到硬件标签页
+  React.useEffect(() => {
+    if (activeTab === 'deepseek' && !enabledCategories.includes('deepseek')) {
+      setActiveTab('hardware');
+    }
+  }, [enabledCategories, activeTab]);
 
   const [balance, setBalance] = React.useState<BalanceData | null>(null);
   const [balanceState, setBalanceState] = React.useState<BalanceState>("loading");
@@ -289,6 +299,9 @@ function App() {
         if (config.ui?.theme === 'dark' || config.ui?.theme === 'light') {
           setTheme(config.ui.theme);
           document.documentElement.setAttribute('data-theme', config.ui.theme);
+        }
+        if (Array.isArray(config.ui?.enabledCategories) && config.ui.enabledCategories.length > 0) {
+          setEnabledCategories(config.ui.enabledCategories);
         }
       })
       .catch(() => {
@@ -384,16 +397,18 @@ function App() {
             >
               硬件监控
             </button>
+            {enabledCategories.includes('deepseek') && (
             <button
               className={`tab-btn ${activeTab === 'deepseek' ? 'active' : ''}`}
               onClick={() => { setActiveTab('deepseek'); saveUiConfig({ activeTab: 'deepseek' }); }}
             >
               DeepSeek API
             </button>
+            )}
           </div>
           <div className="tab-content">
-            {activeTab === 'hardware' ? (
-              <HardwareDashboard sensors={hardwareSensors} />
+            {activeTab === 'hardware' || !enabledCategories.includes('deepseek') ? (
+              <HardwareDashboard sensors={hardwareSensors} enabledCategories={enabledCategories} />
             ) : (
               <DashboardPanel
                 balance={balance}
@@ -418,9 +433,10 @@ function App() {
         <div className="split-container">
           <div className="split-left" style={{ flex: splitRatio }}>
             <div className="split-header">硬件监控</div>
-            <HardwareDashboard sensors={hardwareSensors} />
+            <HardwareDashboard sensors={hardwareSensors} enabledCategories={enabledCategories} />
           </div>
-          <div className="split-divider" onMouseDown={startSplitDrag} />
+          {enabledCategories.includes('deepseek') && (
+          <><div className="split-divider" onMouseDown={startSplitDrag} />
           <div className="split-right" style={{ flex: 1 - splitRatio }}>
             <div className="split-header">DeepSeek API</div>
             <DashboardPanel
@@ -438,7 +454,7 @@ function App() {
                 setView("detail");
               }}
             />
-          </div>
+          </div></>)}
         </div>
       )}
 
@@ -458,6 +474,11 @@ function App() {
           onRefreshIntervalChanged={setRefreshIntervalSeconds}
           onAutoRefreshChanged={setAutoRefreshEnabled}
           onBack={() => setView("dashboard")}
+          enabledCategories={enabledCategories}
+          onEnabledCategoriesChanged={(cats) => {
+            setEnabledCategories(cats);
+            saveUiConfig({ enabledCategories: cats });
+          }}
         />
       )}
       {view === "detail" && (
@@ -816,12 +837,16 @@ function SettingsPanel({
   onUsageCleared,
   onRefreshIntervalChanged,
   onAutoRefreshChanged,
+  enabledCategories,
+  onEnabledCategoriesChanged,
 }: {
   onBack: () => void;
   onUsageLoaded: (usage: UsageResult) => void;
   onUsageCleared: () => void;
   onRefreshIntervalChanged: (seconds: number) => void;
   onAutoRefreshChanged: (enabled: boolean) => void;
+  enabledCategories: string[];
+  onEnabledCategoriesChanged: (categories: string[]) => void;
 }) {
   const [apiKey, setApiKey] = React.useState("");
   const [config, setConfig] = React.useState<AppConfig | null>(null);
@@ -1161,6 +1186,34 @@ function SettingsPanel({
               ))}
             </div>
           )}
+        </SettingsSection>
+
+        <SettingsSection icon={<Filter size={15} />} title="显示分类">
+          <p>选择要在面板中显示的数据分类。</p>
+          <div className="category-toggles">
+            {[
+              { key: 'deepseek', label: 'DeepSeek API' },
+              { key: 'cpu', label: 'CPU' },
+              { key: 'gpu', label: 'GPU' },
+              { key: 'memory', label: '内存' },
+              { key: 'disk', label: '磁盘' },
+              { key: 'network', label: '网络' },
+            ].map(cat => (
+              <label key={cat.key} className="category-toggle">
+                <input
+                  type="checkbox"
+                  checked={enabledCategories.includes(cat.key)}
+                  onChange={() => {
+                    const next = enabledCategories.includes(cat.key)
+                      ? enabledCategories.filter(c => c !== cat.key)
+                      : [...enabledCategories, cat.key];
+                    onEnabledCategoriesChanged(next);
+                  }}
+                />
+                <span>{cat.label}</span>
+              </label>
+            ))}
+          </div>
         </SettingsSection>
 
         <SettingsSection icon={<Info size={15} />} title="关于">

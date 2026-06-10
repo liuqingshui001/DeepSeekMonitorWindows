@@ -73,10 +73,23 @@ pub fn run() {
         pub active_tab: String,
         #[serde(default = "default_split_ratio")]
         pub split_ratio: f64,
+        #[serde(default = "default_enabled_categories")]
+        pub enabled_categories: Vec<String>,
     }
 
     fn default_split_ratio() -> f64 {
         0.5
+    }
+
+    fn default_enabled_categories() -> Vec<String> {
+        vec![
+            "deepseek".into(),
+            "cpu".into(),
+            "gpu".into(),
+            "memory".into(),
+            "disk".into(),
+            "network".into(),
+        ]
     }
 
     impl Default for UiConfig {
@@ -86,6 +99,7 @@ pub fn run() {
                 theme: "dark".into(),
                 active_tab: "hardware".into(),
                 split_ratio: 0.5,
+                enabled_categories: default_enabled_categories(),
             }
         }
     }

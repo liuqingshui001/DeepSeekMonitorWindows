@@ -5,6 +5,7 @@ import { sensorShortLabel } from '../utils/hardwareFormat';
 
 interface HardwareDashboardProps {
   sensors: Record<string, number>;
+  enabledCategories?: string[];
 }
 
 const AlwaysSensorGroup: React.FC<{ title: string; icon: React.ReactNode; items: Array<{ key: string; label: string; showProgress: boolean; meta?: { totalGB?: number } }>; get: (k: string) => number | undefined }> = ({ title, icon, items, get }) => {
@@ -15,13 +16,16 @@ const AlwaysSensorGroup: React.FC<{ title: string; icon: React.ReactNode; items:
   return <SensorGroup title={title} icon={icon} sensors={mapped} />;
 };
 
-const HardwareDashboard: React.FC<HardwareDashboardProps> = ({ sensors }) => {
+const ALL_CATEGORIES = ['cpu', 'gpu', 'memory', 'disk', 'network'];
+
+const HardwareDashboard: React.FC<HardwareDashboardProps> = ({ sensors, enabledCategories = ALL_CATEGORIES }) => {
   const get = (key: string): number | undefined => sensors[key];
   const isAvailable = Object.keys(sensors).length > 0;
 
   return (
     <div className="hardware-dashboard">
       {!isAvailable && <div className="hw-loading">等待传感器数据…</div>}
+      {enabledCategories.includes('cpu') && (
       <AlwaysSensorGroup title="CPU" icon={<Cpu size={16} />}
         get={get}
         items={[
@@ -30,7 +34,8 @@ const HardwareDashboard: React.FC<HardwareDashboardProps> = ({ sensors }) => {
           { key: 'CPU.Clock', label: sensorShortLabel('CPU.Clock'), showProgress: false },
           { key: 'CPU.Power', label: sensorShortLabel('CPU.Power'), showProgress: true },
         ]}
-      />
+      />)}
+      {enabledCategories.includes('gpu') && (
       <AlwaysSensorGroup title="GPU" icon={<Monitor size={16} />}
         get={get}
         items={[
@@ -40,14 +45,16 @@ const HardwareDashboard: React.FC<HardwareDashboardProps> = ({ sensors }) => {
           { key: 'GPU.Power',   label: sensorShortLabel('GPU.Power'), showProgress: true },
           { key: 'GPU.MemUsed', label: sensorShortLabel('GPU.MemUsed'), showProgress: true },
         ]}
-      />
+      />)}
+      {enabledCategories.includes('memory') && (
       <AlwaysSensorGroup title="内存" icon={<Server size={16} />}
         get={get}
         items={[
           { key: 'MEM.Load',   label: sensorShortLabel('MEM.Load'), showProgress: true },
           { key: 'MEM.UsedGB', label: sensorShortLabel('MEM.UsedGB'), showProgress: false },
         ]}
-      />
+      />)}
+      {enabledCategories.includes('disk') && (
       <AlwaysSensorGroup title="磁盘" icon={<HardDrive size={16} />}
         get={get}
         items={[
@@ -55,14 +62,15 @@ const HardwareDashboard: React.FC<HardwareDashboardProps> = ({ sensors }) => {
           { key: 'DISK.Write', label: sensorShortLabel('DISK.Write'), showProgress: false },
           { key: 'DISK.Temp',  label: sensorShortLabel('DISK.Temp'), showProgress: true },
         ]}
-      />
+      />)}
+      {enabledCategories.includes('network') && (
       <AlwaysSensorGroup title="网络" icon={<Wifi size={16} />}
         get={get}
         items={[
           { key: 'NET.Up',   label: sensorShortLabel('NET.Up'), showProgress: false },
           { key: 'NET.Down', label: sensorShortLabel('NET.Down'), showProgress: false },
         ]}
-      />
+      />)}
     </div>
   );
 };

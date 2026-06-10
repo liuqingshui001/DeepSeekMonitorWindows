@@ -609,6 +609,30 @@ button {
   letter-spacing: 2px;
 }
 
+.category-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.category-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-strong);
+  padding: 4px 0;
+}
+
+.category-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #4d6bfe;
+  cursor: pointer;
+}
+
 .key-row button,
 .secondary,
 .back-button {
