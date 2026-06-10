@@ -285,7 +285,7 @@ pub fn run() {
 
         if enabled {
             let exe = std::env::current_exe().map_err(|error| error.to_string())?;
-            let exe_arg = exe.to_string_lossy().to_string();
+            let exe_arg = format!("\"{}\"", exe.to_string_lossy());
             let status = Command::new("reg")
                 .args(["add", run_key, "/v", value_name, "/t", "REG_SZ", "/d"])
                 .arg(exe_arg)
