@@ -305,30 +305,41 @@ pub fn run() {
     }
 
     fn apply_autostart(enabled: bool) -> Result<(), String> {
-        let run_key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
-        let value_name = "DeepSeekMonitorWindows";
+        let task_name = "DeepSeekMonitorWindows";
+        let exe = std::env::current_exe().map_err(|error| error.to_string())?;
+        let exe_path = exe.to_string_lossy();
+
+        // 清理旧版注册表自启残留
+        let _ = Command::new("powershell")
+            .args([
+                "-NoProfile", "-NonInteractive", "-Command",
+                r#"Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "DeepSeekMonitorWindows" -ErrorAction SilentlyContinue"#,
+            ])
+            .status();
 
         if enabled {
-            let exe = std::env::current_exe().map_err(|error| error.to_string())?;
-            let exe_arg = format!("\"{}\"", exe.to_string_lossy());
-            let status = Command::new("reg")
-                .args(["add", run_key, "/v", value_name, "/t", "REG_SZ", "/d"])
-                .arg(exe_arg)
-                .args(["/f"])
+            // 创建计划任务：登录时以最高权限运行，不弹 UAC
+            let ps_cmd = format!(
+                r#"$a = New-ScheduledTaskAction -Execute '"{}"'; $t = New-ScheduledTaskTrigger -AtLogon; $p = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -RunLevel Highest; $s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -Compatibility Win8; Register-ScheduledTask -TaskName "{}" -Action $a -Trigger $t -Principal $p -Settings $s -Force"#,
+                exe_path, task_name
+            );
+            let status = Command::new("powershell")
+                .args(["-NoProfile", "-NonInteractive", "-Command", &ps_cmd])
                 .status()
-                .map_err(|error| format!("写入开机自启失败：{error}"))?;
+                .map_err(|error| format!("创建计划任务失败：{error}"))?;
             if !status.success() {
-                return Err("写入开机自启失败".to_string());
+                return Err("创建计划任务失败".to_string());
             }
-            return Ok(());
-        }
-
-        let status = Command::new("reg")
-            .args(["delete", run_key, "/v", value_name, "/f"])
-            .status()
-            .map_err(|error| format!("关闭开机自启失败：{error}"))?;
-        if !status.success() {
-            return Ok(());
+        } else {
+            // 删除计划任务
+            let ps_cmd = format!(
+                r#"Unregister-ScheduledTask -TaskName "{}" -Confirm:$false -ErrorAction SilentlyContinue"#,
+                task_name
+            );
+            let _status = Command::new("powershell")
+                .args(["-NoProfile", "-NonInteractive", "-Command", &ps_cmd])
+                .status()
+                .map_err(|error| format!("删除计划任务失败：{error}"))?;
         }
         Ok(())
     }
