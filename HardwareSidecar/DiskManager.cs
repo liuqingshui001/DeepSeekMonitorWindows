@@ -10,6 +10,8 @@ public class DiskManager : IDisposable
 
     private static float? GetThroughput(IComputer computer, string direction)
     {
+        float total = 0f;
+        bool found = false;
         foreach (var hw in computer.Hardware)
         {
             if (hw.HardwareType != HardwareType.Storage) continue;
@@ -20,11 +22,14 @@ public class DiskManager : IDisposable
                     var name = s.Name.ToLowerInvariant();
                     if ((direction == "read" && name.Contains("read")) ||
                         (direction == "write" && name.Contains("write")))
-                        return s.Value.Value / 1024f; // LHM B/s → KB/s
+                    {
+                        total += s.Value.Value;
+                        found = true;
+                    }
                 }
             }
         }
-        return null;
+        return found ? total / 1024f : null; // LHM B/s (sum of all disks) → KB/s
     }
 
     private static float? GetTemp(IComputer computer)
